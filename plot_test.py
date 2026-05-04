@@ -23,7 +23,6 @@ def main() -> None:
     with tempfile.TemporaryDirectory() as temp_dir:
         temp_path = Path(temp_dir)
         plot_path = temp_path / "plot.png"
-        downloaded_path = temp_path / "downloaded_plot.png"
 
         plt.figure(figsize=(8, 5), dpi=150)
         plt.plot(x_values, y_values, marker="o", linewidth=2)
@@ -52,16 +51,6 @@ def main() -> None:
 
         print(f"Uploaded image id: {image_id}")
         print(f"Uploaded image url: {image_url}")
-
-        fetch_response = requests.get(
-            image_url,
-            timeout=30,
-        )
-        fetch_response.raise_for_status()
-        downloaded_path.write_bytes(fetch_response.content)
-
-        # print(f"Downloaded image saved to: {downloaded_path}")
-        # print(f"Downloaded size: {downloaded_path.stat().st_size} bytes")
 
 
 if __name__ == "__main__":

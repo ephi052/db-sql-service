@@ -61,14 +61,42 @@ def is_ip_allowed(client_ip: str, allowed_ips: list[str]) -> bool:
 
 
 def require_allowed_ip(request: Request) -> str:
-    if is_demo_mode_enabled():
-        logger.warning("DEMO_MODE enabled: bypassing IP allowlist")
-        return "demo-mode"
-
+    demo_mode_enabled = is_demo_mode_enabled()
     client_ip = get_client_ip(request)
     allowed_ips = parse_allowed_ips()
 
+    logger.info(
+        "IP guard check: method=%s path=%s client_ip=%s allowed_ips=%s demo_mode=%s",
+        request.method,
+        request.url.path,
+        client_ip,
+        allowed_ips,
+        demo_mode_enabled,
+    )
+
+    if demo_mode_enabled:
+        logger.warning(
+            "IP guard bypassed by DEMO_MODE: method=%s path=%s client_ip=%s",
+            request.method,
+            request.url.path,
+            client_ip,
+        )
+        return "demo-mode"
+
     if not is_ip_allowed(client_ip, allowed_ips):
+        logger.warning(
+            "IP guard denied: method=%s path=%s client_ip=%s allowed_ips=%s",
+            request.method,
+            request.url.path,
+            client_ip,
+            allowed_ips,
+        )
         raise HTTPException(status_code=403, detail="IP address is not allowed")
 
+    logger.info(
+        "IP guard allowed: method=%s path=%s client_ip=%s",
+        request.method,
+        request.url.path,
+        client_ip,
+    )
     return client_ip
