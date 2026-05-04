@@ -1,5 +1,7 @@
 # app/main.py
 from pathlib import Path
+from contextlib import asynccontextmanager
+import logging
 import os
 import uuid
 
@@ -12,7 +14,9 @@ from sqlalchemy.orm import Session
 from .db import Base, SessionLocal, engine
 from .models import Event, Image
 from .schemas import EventIn, EventOut
-from .security import require_api_key
+from .security import is_demo_mode_enabled, require_allowed_ip, require_api_key
+
+logger = logging.getLogger(__name__)
 
 # Create tables (simple approach; for production consider migrations)
 Base.metadata.create_all(bind=engine)
@@ -22,12 +26,21 @@ IMAGES_DIR = Path(os.getenv("IMAGES_DIR", "/data/images"))
 IMAGES_DIR.mkdir(parents=True, exist_ok=True)
 MAX_IMAGE_BYTES = int(os.getenv("MAX_IMAGE_BYTES", str(1024 * 1024)))
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    if is_demo_mode_enabled():
+        logger.warning("DEMO_MODE is enabled: image upload/delete IP allowlist checks are bypassed")
+    yield
+
+
 app = FastAPI(
     title="SQLite Ingestion Service",
     version="1.0.0",
     docs_url=None,        # disable Swagger UI in production
     redoc_url=None,
     openapi_url=None,
+    lifespan=lifespan,
 )
 
 app.mount("/images", StaticFiles(directory=str(IMAGES_DIR)), name="images")
@@ -151,7 +164,7 @@ def get_event_by_id_and_exnum(
 @app.post(
     "/v1/images",
     status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(require_api_key)],
+    dependencies=[Depends(require_api_key), Depends(require_allowed_ip)],
 )
 def upload_image(request: Request, file: UploadFile = File(...), db: Session = Depends(get_db)):
     """
@@ -232,7 +245,7 @@ def get_image(image_id: int, db: Session = Depends(get_db)):
     return FileResponse(file_path, media_type=image.content_type)
 
 
-@app.delete("/v1/images/{image_id}", dependencies=[Depends(require_api_key)])
+@app.delete("/v1/images/{image_id}", dependencies=[Depends(require_api_key), Depends(require_allowed_ip)])
 def delete_image(image_id: int, db: Session = Depends(get_db)):
     """
     Delete an image by id.

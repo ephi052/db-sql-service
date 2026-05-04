@@ -18,6 +18,8 @@ headers = {
     "X-API-Key": API_KEY,
     "Content-Type": "application/json"
 }
+EVENT_STID = "12345"
+EVENT_EXNUM = "EX001"
 
 def test_create_event():
     """Test POST /v1/events"""
@@ -28,8 +30,8 @@ def test_create_event():
     payload = {
         "source": "test-source",
         "payload": {
-            "stid": "12345",
-            "exnum": "EX001",
+            "stid": EVENT_STID,
+            "exnum": EVENT_EXNUM,
             "table": {
                 "name": "test_table",
                 "rows": 100,
@@ -60,13 +62,13 @@ def test_create_event():
         return None
 
 
-def test_get_event(event_id):
+def test_get_event():
     """Test GET /v1/events/{event_id}"""
     print("\n" + "="*60)
     print("TEST 2: Retrieve Event (GET /v1/events/{event_id})")
     print("="*60)
     
-    url = f"{BASE_URL}/v1/events/{event_id}?exnum=EX001"
+    url = f"{BASE_URL}/v1/events/{EVENT_STID}?exnum={EVENT_EXNUM}"
     print(f"\nRequest URL: {url}")
     
     response = requests.get(
@@ -185,7 +187,7 @@ def test_upload_image():
             response = requests.post(
                 f"{BASE_URL}/v1/images",
                 files=files,
-                headers={"X-API-Key": API_KEY}  # Note: no Content-Type for file upload
+                headers={"X-API-Key": API_KEY},
             )
         
         print(f"\nStatus Code: {response.status_code}")
@@ -228,6 +230,26 @@ def test_retrieve_image(image_id):
         return False
 
 
+def test_delete_image(image_id):
+    """Test DELETE /v1/images/{image_id}"""
+    print("\n" + "="*60)
+    print("TEST 4: Delete Image (DELETE /v1/images/{image_id})")
+    print("="*60)
+
+    response = requests.delete(
+        f"{BASE_URL}/v1/images/{image_id}",
+        headers={"X-API-Key": API_KEY},
+    )
+
+    print(f"\nStatus Code: {response.status_code}")
+    if response.status_code == 204:
+        print("✓ Image deleted")
+        return True
+
+    print(f"✗ Failed to delete image: {response.text}")
+    return False
+
+
 if __name__ == "__main__":
     print("\n🧪 SQLite Ingestion Service - API Tests")
     print(f"Base URL: {BASE_URL}")
@@ -246,6 +268,7 @@ if __name__ == "__main__":
     if image_id:
         # Retrieve the image
         test_retrieve_image(image_id)
+        test_delete_image(image_id)
     
     # Test events
     print("\n" + "="*60)
@@ -257,7 +280,7 @@ if __name__ == "__main__":
     
     if event_id:
         # Retrieve the event
-        test_get_event(event_id)
+        test_get_event()
         
         # List all events
         test_list_events()

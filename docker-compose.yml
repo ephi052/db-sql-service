@@ -3,6 +3,8 @@ services:
     build: .
     environment:
       - API_KEY=${API_KEY}
+      - ALLOWED_IPS=${ALLOWED_IPS}
+      - DEMO_MODE=${DEMO_MODE:-false}
     volumes:
       - sqlite_data:/data
     restart: unless-stopped
