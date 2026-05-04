@@ -47,8 +47,10 @@ def main() -> None:
 
         upload_response.raise_for_status()
         upload_data = upload_response.json()
+        image_id = upload_data["image_id"]
         image_url = upload_data["image_url"]
 
+        print(f"Uploaded image id: {image_id}")
         print(f"Uploaded image url: {image_url}")
 
         fetch_response = requests.get(

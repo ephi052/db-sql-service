@@ -11,8 +11,6 @@ Environment variables:
 - `IMAGES_DIR`: directory where uploaded files are stored. Defaults to `/data/images`.
 - `MAX_IMAGE_BYTES`: maximum accepted image size in bytes. Defaults to `1048576`.
 
-When running behind Nginx or another reverse proxy, the service uses `X-Forwarded-For` first, then `X-Real-IP`, then the direct client address. Only trust these headers when the app is behind a proxy you control.
-
 ## Endpoints
 
 ### Events
@@ -80,7 +78,7 @@ curl -X DELETE -H "X-API-Key: $API_KEY" http://localhost/v1/images/1
 
 ```bash
 python3 -m py_compile app/main.py app/db.py app/models.py app/schemas.py app/security.py
-pytest
+python test_api.py
 docker compose up -d --build
 curl http://localhost/health
 ```
