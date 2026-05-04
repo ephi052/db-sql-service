@@ -62,7 +62,11 @@ def health():
 # ----------------------------
 # CREATE (POST) - store payload
 # ----------------------------
-@app.post("/v1/events", response_model=EventOut, dependencies=[Depends(require_api_key)])
+@app.post(
+    "/v1/events",
+    response_model=EventOut,
+    dependencies=[Depends(require_api_key), Depends(require_allowed_ip)],
+)
 def create_event(body: EventIn, db: Session = Depends(get_db)):
     """
     Expected body:
