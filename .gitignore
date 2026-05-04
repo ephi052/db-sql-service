@@ -133,3 +133,4 @@ Thumbs.db
 /data/
 *.db
 app.db
+/plotly_test.py

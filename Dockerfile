@@ -8,8 +8,10 @@ RUN addgroup --system app && adduser --system --ingroup app app
 
 WORKDIR /srv
 
+COPY requirments.txt /srv/requirments.txt
+
 RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir fastapi==0.115.* uvicorn[standard]==0.30.* sqlalchemy==2.0.*
+        && pip install --no-cache-dir -r /srv/requirments.txt
 
 COPY app/ /srv/app/
 

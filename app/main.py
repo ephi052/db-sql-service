@@ -1,15 +1,26 @@
 # app/main.py
-from fastapi import FastAPI, Depends, HTTPException, Query
-from sqlalchemy.orm import Session
-from sqlalchemy import desc
+from pathlib import Path
+import os
+import uuid
 
-from .db import Base, engine, SessionLocal
-from .models import Event
+from fastapi import Depends, File, FastAPI, HTTPException, Query, Request, UploadFile, status
+from fastapi.responses import FileResponse, Response
+from fastapi.staticfiles import StaticFiles
+from sqlalchemy import desc
+from sqlalchemy.orm import Session
+
+from .db import Base, SessionLocal, engine
+from .models import Event, Image
 from .schemas import EventIn, EventOut
 from .security import require_api_key
 
 # Create tables (simple approach; for production consider migrations)
 Base.metadata.create_all(bind=engine)
+
+# Setup image storage directory
+IMAGES_DIR = Path(os.getenv("IMAGES_DIR", "/data/images"))
+IMAGES_DIR.mkdir(parents=True, exist_ok=True)
+MAX_IMAGE_BYTES = int(os.getenv("MAX_IMAGE_BYTES", str(1024 * 1024)))
 
 app = FastAPI(
     title="SQLite Ingestion Service",
@@ -19,6 +30,9 @@ app = FastAPI(
     openapi_url=None,
 )
 
+app.mount("/images", StaticFiles(directory=str(IMAGES_DIR)), name="images")
+
+
 def get_db():
     db = SessionLocal()
     try:
@@ -26,9 +40,11 @@ def get_db():
     finally:
         db.close()
 
+
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
 
 # ----------------------------
 # CREATE (POST) - store payload
@@ -66,6 +82,7 @@ def create_event(body: EventIn, db: Session = Depends(get_db)):
         payload=e.payload,
     )
 
+
 # ----------------------------
 # READ - list events (paginated)
 # ----------------------------
@@ -92,6 +109,7 @@ def list_events(limit: int = 50, offset: int = 0, db: Session = Depends(get_db))
         for e in rows
     ]
 
+
 # ---------------------------------------------------------
 # READ - get event by stid (user ID) and exnum
 # ---------------------------------------------------------
@@ -108,13 +126,12 @@ def get_event_by_id_and_exnum(
     Returns the most recent event matching both stid and exnum.
     Returns 404 if no matching event exists.
     """
-    # Query for events where payload.stid matches and payload.exnum matches
     events = (
         db.query(Event)
         .order_by(desc(Event.id))
         .all()
     )
-    
+
     for e in events:
         p = e.payload or {}
         if isinstance(p, dict) and p.get("stid") == event_id and p.get("exnum") == exnum:
@@ -124,6 +141,116 @@ def get_event_by_id_and_exnum(
                 source=e.source,
                 payload=e.payload,
             )
-    
-    # 404 if no matching event found
+
     raise HTTPException(status_code=404, detail="Not found")
+
+
+# ----------------------------
+# IMAGE ENDPOINTS
+# ----------------------------
+@app.post(
+    "/v1/images",
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_api_key)],
+)
+def upload_image(request: Request, file: UploadFile = File(...), db: Session = Depends(get_db)):
+    """
+    Upload an image file.
+
+    Returns: {"id": 1, "image_id": 1, "image_url": "https://your-host/images/random-name.png"}
+    """
+    if not file.content_type or not file.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="File must be an image (e.g., jpg, png, gif, webp)")
+
+    original_filename = file.filename or ""
+    if "/" in original_filename or "\\" in original_filename or original_filename.startswith("."):
+        raise HTTPException(status_code=400, detail="Invalid filename")
+
+    file_ext = Path(original_filename).suffix.lower()
+    if not file_ext:
+        raise HTTPException(status_code=400, detail="Image filename must include an extension")
+
+    unique_filename = f"{uuid.uuid4()}{file_ext}"
+    file_path = IMAGES_DIR / unique_filename
+
+    total_size = 0
+    try:
+        with open(file_path, "wb") as buffer:
+            while True:
+                chunk = file.file.read(1024 * 1024)
+                if not chunk:
+                    break
+                total_size += len(chunk)
+                if total_size > MAX_IMAGE_BYTES:
+                    raise HTTPException(status_code=413, detail=f"Image exceeds {MAX_IMAGE_BYTES} byte limit")
+                buffer.write(chunk)
+    except Exception as e:
+        if file_path.exists():
+            file_path.unlink()
+        if isinstance(e, HTTPException):
+            raise e
+        raise HTTPException(status_code=500, detail=f"Failed to save image: {str(e)}")
+    finally:
+        file.file.close()
+
+    image = Image(
+        filename=unique_filename,
+        content_type=file.content_type,
+        size=total_size,
+        storage_path=str(file_path),
+    )
+    db.add(image)
+    try:
+        db.commit()
+        db.refresh(image)
+    except Exception as e:
+        db.rollback()
+        if file_path.exists():
+            file_path.unlink()
+        raise HTTPException(status_code=500, detail=f"Failed to save image metadata: {str(e)}")
+
+    return {
+        "id": image.id,
+        "image_id": image.id,
+        "image_url": str(request.url_for("images", path=image.filename)),
+    }
+
+
+@app.get("/v1/images/{image_id}")
+def get_image(image_id: int, db: Session = Depends(get_db)):
+    """
+    Retrieve an image by id. This endpoint is intentionally public.
+    """
+    image = db.get(Image, image_id)
+    if not image:
+        raise HTTPException(status_code=404, detail="Image not found")
+
+    file_path = Path(image.storage_path)
+    if not file_path.exists() or not file_path.is_file():
+        raise HTTPException(status_code=404, detail="Image not found")
+
+    return FileResponse(file_path, media_type=image.content_type)
+
+
+@app.delete("/v1/images/{image_id}", dependencies=[Depends(require_api_key)])
+def delete_image(image_id: int, db: Session = Depends(get_db)):
+    """
+    Delete an image by id.
+
+    Returns: 204 No Content on success, 404 if not found.
+    """
+    image = db.get(Image, image_id)
+    if not image:
+        raise HTTPException(status_code=404, detail="Image not found")
+
+    file_path = Path(image.storage_path)
+    try:
+        if file_path.exists():
+            file_path.unlink()
+        db.delete(image)
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to delete image: {str(e)}")
+
+    return Response(status_code=204)
