@@ -10,7 +10,7 @@ services:
   nginx:
     image: nginx:1.27-alpine
     ports:
-      - "8596:80"
+      - "8590:80"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
     depends_on:

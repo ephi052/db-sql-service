@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 import requests
 
 
-BASE_URL = os.getenv("BASE_URL", "https://stability-armored-friction.ngrok-free.dev")
+BASE_URL = os.getenv("BASE_URL", " https://stability-armored-friction.ngrok-free.dev")
 API_KEY = os.getenv("API_KEY", "test-api-key-12345")
 
 
